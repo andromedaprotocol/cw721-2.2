@@ -41,12 +41,7 @@ pub const ATTRIBUTE_START_TRADING_TIME: &str = "start_trading_time";
 pub const ATTRIBUTE_ROYALTY_INFO: &str = "royalty_info";
 // ----------------------
 
-pub struct Cw721Config<
-    'a,
-    // NftInfo extension (onchain metadata).
-    TNftExtension,
-> where
-    TNftExtension: Cw721State,
+pub struct Cw721Config<'a>
 {
     /// Note: replaces deprecated/legacy key "nft_info"!
     pub collection_info: Item<CollectionInfo>,
@@ -55,13 +50,11 @@ pub struct Cw721Config<
     /// Stored as (granter, operator) giving operator full control over granter's account.
     /// NOTE: granter is the owner, so operator has only control for NFTs owned by granter!
     pub operators: Map<(&'a Addr, &'a Addr), Expiration>,
-    pub nft_info: IndexedMap<&'a str, NftInfo<TNftExtension>, TokenIndexes<'a, TNftExtension>>,
+    pub nft_info: IndexedMap<&'a str, NftInfo, TokenIndexes<'a>>,
     pub withdraw_address: Item<String>,
 }
 
-impl<TNftExtension> Default for Cw721Config<'static, TNftExtension>
-where
-    TNftExtension: Cw721State,
+impl Default for Cw721Config<'static>
 {
     fn default() -> Self {
         Self::new(
@@ -77,9 +70,8 @@ where
     }
 }
 
-impl<'a, TNftExtension> Cw721Config<'a, TNftExtension>
+impl<'a> Cw721Config<'a>
 where
-    TNftExtension: Cw721State,
 {
     fn new(
         collection_info_key: &'static str,
@@ -120,12 +112,12 @@ where
     }
 }
 
-pub fn token_owner_idx<TNftExtension>(_pk: &[u8], d: &NftInfo<TNftExtension>) -> Addr {
+pub fn token_owner_idx(_pk: &[u8], d: &NftInfo) -> Addr {
     d.owner.clone()
 }
 
 #[cw_serde]
-pub struct NftInfo<TNftExtension> {
+pub struct NftInfo {
     /// The owner of the newly minted NFT
     pub owner: Addr,
     /// Approvals are stored here, as we clear them all upon transfer and cannot accumulate much
@@ -135,9 +127,6 @@ pub struct NftInfo<TNftExtension> {
     /// Should point to a JSON file that conforms to the ERC721
     /// Metadata JSON Schema
     pub token_uri: Option<String>,
-
-    /// You can add any custom metadata here when you extend cw721-base
-    pub extension: TNftExtension,
 }
 
 #[cw_serde]
@@ -154,21 +143,19 @@ impl Approval {
     }
 }
 
-pub struct TokenIndexes<'a, TNftExtension>
+pub struct TokenIndexes<'a>
 where
-    TNftExtension: Cw721State,
 {
-    pub owner: MultiIndex<'a, Addr, NftInfo<TNftExtension>, String>,
+    pub owner: MultiIndex<'a, Addr, NftInfo, String>,
 }
 
-impl<'a, TNftExtension> IndexList<NftInfo<TNftExtension>> for TokenIndexes<'a, TNftExtension>
+impl<'a> IndexList<NftInfo> for TokenIndexes<'a>
 where
-    TNftExtension: Cw721State,
 {
     fn get_indexes(
         &'_ self,
-    ) -> Box<dyn Iterator<Item = &'_ dyn Index<NftInfo<TNftExtension>>> + '_> {
-        let v: Vec<&dyn Index<NftInfo<TNftExtension>>> = vec![&self.owner];
+    ) -> Box<dyn Iterator<Item = &'_ dyn Index<NftInfo>> + '_> {
+        let v: Vec<&dyn Index<NftInfo>> = vec![&self.owner];
         Box::new(v.into_iter())
     }
 }

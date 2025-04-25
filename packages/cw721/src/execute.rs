@@ -3,7 +3,6 @@ use cosmwasm_std::{
     StdResult, Storage,
 };
 use cw_ownable::{Action, Ownership, OwnershipError};
-use cw_storage_plus::Item;
 use cw_utils::Expiration;
 
 use crate::{
@@ -15,63 +14,39 @@ use crate::{
     msg::{CollectionInfoMsg, Cw721InstantiateMsg, Cw721MigrateMsg, NftInfoMsg},
     query::query_collection_info_and_extension,
     receiver::Cw721ReceiveMsg,
-    state::{CollectionInfo, Cw721Config, NftInfo, CREATOR, MINTER},
+    state::{Cw721Config, NftInfo, CREATOR, MINTER},
     traits::{
         Cw721CustomMsg, Cw721Execute, Cw721State, FromAttributesState, StateFactory,
         ToAttributesState,
     },
-    Approval, DefaultOptionalCollectionExtension, DefaultOptionalCollectionExtensionMsg,
+    Approval, DefaultOptionalCollectionExtension,
     DefaultOptionalNftExtension, DefaultOptionalNftExtensionMsg, EmptyOptionalCollectionExtension,
     EmptyOptionalCollectionExtensionMsg, EmptyOptionalNftExtension, EmptyOptionalNftExtensionMsg,
 };
 
 // ------- instantiate -------
-pub fn instantiate_with_version<TCollectionExtension, TCollectionExtensionMsg, TCustomResponseMsg>(
+pub fn instantiate_with_version<TCustomResponseMsg>(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
-    msg: Cw721InstantiateMsg<TCollectionExtensionMsg>,
+    msg: Cw721InstantiateMsg,
     contract_name: &str,
     contract_version: &str,
 ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
 where
-    TCollectionExtension: Cw721State + ToAttributesState + FromAttributesState,
-    TCollectionExtensionMsg: Cw721CustomMsg + StateFactory<TCollectionExtension>,
 {
     cw2::set_contract_version(deps.storage, contract_name, contract_version)?;
     instantiate(deps, env, info, msg)
 }
 
-pub fn instantiate<TCollectionExtension, TCollectionExtensionMsg, TCustomResponseMsg>(
+pub fn instantiate<TCustomResponseMsg>(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
-    msg: Cw721InstantiateMsg<TCollectionExtensionMsg>,
+    msg: Cw721InstantiateMsg,
 ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
 where
-    TCollectionExtension: Cw721State + ToAttributesState + FromAttributesState,
-    TCollectionExtensionMsg: Cw721CustomMsg + StateFactory<TCollectionExtension>,
 {
-    let config = Cw721Config::<Option<Empty>>::default();
-
-    // ---- update collection info before(!) creator and minter is set ----
-    let collection_metadata_msg = CollectionInfoMsg {
-        name: Some(msg.name),
-        symbol: Some(msg.symbol),
-        extension: msg.collection_info_extension,
-    };
-    let collection_info = collection_metadata_msg.create(deps.as_ref(), env, info.into(), None)?;
-    let extension_attributes = collection_info.extension.to_attributes_state()?;
-    let collection_info = collection_info.into();
-    config
-        .collection_info
-        .save(deps.storage, &collection_info)?;
-    for attr in extension_attributes {
-        config
-            .collection_extension
-            .save(deps.storage, attr.key.clone(), &attr)?;
-    }
-
     // ---- set minter and creator ----
     // use info.sender if None is passed
     let minter: &str = match msg.minter.as_deref() {
@@ -120,11 +95,11 @@ pub fn transfer_nft<TNftExtension>(
     info: &MessageInfo,
     recipient: &str,
     token_id: &str,
-) -> Result<NftInfo<TNftExtension>, Cw721ContractError>
+) -> Result<NftInfo, Cw721ContractError>
 where
-    TNftExtension: Cw721State,
+    TNftExtension: Cw721State,  
 {
-    let config = Cw721Config::<TNftExtension>::default();
+    let config = Cw721Config::default();
     let mut token = config.nft_info.load(deps.storage, token_id)?;
     // ensure we have permissions
     check_can_send(deps.as_ref(), env, info.sender.as_str(), &token)?;
@@ -196,11 +171,9 @@ pub fn update_approvals<TNftExtension>(
     // if add == false, remove. if add == true, remove then set with this expiration
     add: bool,
     expires: Option<Expiration>,
-) -> Result<NftInfo<TNftExtension>, Cw721ContractError>
-where
-    TNftExtension: Cw721State,
+) -> Result<NftInfo, Cw721ContractError>
 {
-    let config = Cw721Config::<TNftExtension>::default();
+    let config = Cw721Config::default();
     let mut token = config.nft_info.load(deps.storage, token_id)?;
     // ensure we have permissions
     check_can_approve(deps.as_ref(), env, info.sender.as_str(), &token)?;
@@ -262,7 +235,7 @@ pub fn approve_all<TCustomResponseMsg>(
 
     // set the operator for us
     let operator_addr = deps.api.addr_validate(&operator)?;
-    let config = Cw721Config::<Option<Empty>>::default();
+    let config = Cw721Config::default();
     config
         .operators
         // stores info.sender as key (=granter, NFT owner) and operator as value (operator only(!) has control over NFTs of granter)
@@ -282,7 +255,7 @@ pub fn revoke_all<TCustomResponseMsg>(
     operator: String,
 ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
     let operator_addr = deps.api.addr_validate(&operator)?;
-    let config = Cw721Config::<Option<Empty>>::default();
+    let config = Cw721Config::default();
     config
         .operators
         .remove(deps.storage, (&info.sender, &operator_addr));
@@ -299,7 +272,7 @@ pub fn burn_nft<TCustomResponseMsg>(
     info: &MessageInfo,
     token_id: String,
 ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-    let config = Cw721Config::<Option<Empty>>::default();
+    let config = Cw721Config::default();
     let token = config.nft_info.load(deps.storage, &token_id)?;
     check_can_send(deps.as_ref(), env, info.sender.as_str(), &token)?;
 
@@ -312,38 +285,6 @@ pub fn burn_nft<TCustomResponseMsg>(
         .add_attribute("token_id", token_id))
 }
 
-pub fn update_collection_info<TCollectionExtension, TCollectionExtensionMsg, TCustomResponseMsg>(
-    deps: DepsMut,
-    info: Option<&MessageInfo>,
-    env: &Env,
-    msg: CollectionInfoMsg<TCollectionExtensionMsg>,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
-where
-    TCollectionExtension: Cw721State + ToAttributesState + FromAttributesState,
-    TCollectionExtensionMsg: Cw721CustomMsg + StateFactory<TCollectionExtension>,
-    TCustomResponseMsg: CustomMsg,
-{
-    let config = Cw721Config::<Option<Empty>>::default();
-    let current = query_collection_info_and_extension::<TCollectionExtension>(deps.as_ref())?;
-    let collection_info = msg.create(deps.as_ref(), env, info, Some(&current))?;
-    let extension_attributes = collection_info.extension.to_attributes_state()?;
-    config
-        .collection_info
-        .save(deps.storage, &collection_info.into())?;
-    for attr in extension_attributes {
-        config
-            .collection_extension
-            .save(deps.storage, attr.key.clone(), &attr)?;
-    }
-
-    let response = Response::new().add_attribute("action", "update_collection_info");
-    if let Some(info) = info {
-        Ok(response.add_attribute("sender", info.sender.to_string()))
-    } else {
-        Ok(response)
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn mint<TNftExtension, TNftExtensionMsg, TCustomResponseMsg>(
     deps: DepsMut,
@@ -352,7 +293,6 @@ pub fn mint<TNftExtension, TNftExtensionMsg, TCustomResponseMsg>(
     token_id: String,
     owner: String,
     token_uri: Option<String>,
-    extension: TNftExtensionMsg,
 ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
 where
     TNftExtension: Cw721State,
@@ -364,10 +304,9 @@ where
         owner: owner.clone(),
         approvals: vec![],
         token_uri: token_uri.clone(),
-        extension,
     };
     let token = token_msg.create(deps.as_ref(), env, info.into(), None)?;
-    let config = Cw721Config::<TNftExtension>::default();
+    let config = Cw721Config::default();
     config
         .nft_info
         .update(deps.storage, &token_id, |old| match old {
@@ -414,26 +353,22 @@ pub fn update_creator_ownership<TCustomResponseMsg>(
 
 /// The creator is the only one eligible to update NFT's token uri and onchain metadata (`NftInfo.extension`).
 /// NOTE: approvals and owner are not affected by this call, since they belong to the NFT owner.
-pub fn update_nft_info<TNftExtension, TNftExtensionMsg, TCustomResponseMsg>(
+pub fn update_nft_info<TNftExtensionMsg, TCustomResponseMsg>(
     deps: DepsMut,
     env: &Env,
     info: Option<&MessageInfo>,
     token_id: String,
     token_uri: Option<String>,
-    msg: TNftExtensionMsg,
 ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
 where
-    TNftExtension: Cw721State,
-    TNftExtensionMsg: Cw721CustomMsg + StateFactory<TNftExtension>,
     TCustomResponseMsg: CustomMsg,
 {
-    let contract = Cw721Config::<TNftExtension>::default();
+        let contract = Cw721Config::default();
     let current_nft_info = contract.nft_info.load(deps.storage, &token_id)?;
     let nft_info_msg = NftInfoMsg {
         owner: current_nft_info.owner.to_string(),
         approvals: current_nft_info.approvals.clone(),
         token_uri,
-        extension: msg,
     };
     let updated = nft_info_msg.create(deps.as_ref(), env, info, Some(&current_nft_info))?;
     contract.nft_info.save(deps.storage, &token_id, &updated)?;
@@ -449,7 +384,7 @@ pub fn set_withdraw_address<TCustomResponseMsg>(
 ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
     CREATOR.assert_owner(deps.storage, sender)?;
     deps.api.addr_validate(&address)?;
-    let config = Cw721Config::<Option<Empty>>::default();
+    let config = Cw721Config::default();
     config.withdraw_address.save(deps.storage, &address)?;
     Ok(Response::new()
         .add_attribute("action", "set_withdraw_address")
@@ -461,7 +396,7 @@ pub fn remove_withdraw_address<TCustomResponseMsg>(
     sender: &Addr,
 ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
     CREATOR.assert_owner(storage, sender)?;
-    let config = Cw721Config::<Option<Empty>>::default();
+    let config = Cw721Config::default();
     let address = config.withdraw_address.may_load(storage)?;
     match address {
         Some(address) => {
@@ -478,7 +413,8 @@ pub fn withdraw_funds<TCustomResponseMsg>(
     storage: &mut dyn Storage,
     amount: &Coin,
 ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-    let withdraw_address = Cw721Config::<Option<Empty>>::default()
+    let config = Cw721Config::default();
+    let withdraw_address = config
         .withdraw_address
         .may_load(storage)?;
     match withdraw_address {
@@ -498,14 +434,12 @@ pub fn withdraw_funds<TCustomResponseMsg>(
 }
 
 /// returns true if the sender can execute approve or reject on the contract
-pub fn check_can_approve<TNftExtension>(
+pub fn check_can_approve(
     deps: Deps,
     env: &Env,
     sender: &str,
-    token: &NftInfo<TNftExtension>,
+    token: &NftInfo,
 ) -> Result<(), Cw721ContractError>
-where
-    TNftExtension: Cw721State,
 {
     let sender = deps.api.addr_validate(sender)?;
     // owner can approve
@@ -513,7 +447,7 @@ where
         return Ok(());
     }
     // operator can approve
-    let config = Cw721Config::<TNftExtension>::default();
+    let config = Cw721Config::default();
     let op = config
         .operators
         .may_load(deps.storage, (&token.owner, &sender))?;
@@ -530,11 +464,11 @@ where
 }
 
 /// returns true if the sender can transfer ownership of the token
-pub fn check_can_send<TNftExtension>(
+pub fn check_can_send(
     deps: Deps,
     env: &Env,
     sender: &str,
-    token: &NftInfo<TNftExtension>,
+    token: &NftInfo,
 ) -> Result<(), Cw721ContractError> {
     let sender = deps.api.addr_validate(sender)?;
     // owner can send
@@ -552,7 +486,7 @@ pub fn check_can_send<TNftExtension>(
     }
 
     // operator can send
-    let config = Cw721Config::<Option<Empty>>::default();
+    let config = Cw721Config::default();
     let op = config
         .operators
         // has token owner approved/gave grant to sender for full control over owner's NFTs?
@@ -593,9 +527,7 @@ pub fn migrate(
     contract_version: &str,
 ) -> Result<Response, Cw721ContractError> {
     let response = Response::<Empty>::default();
-    // first migrate legacy data ...
-    let response = migrate_legacy_minter_and_creator(deps.storage, deps.api, &env, &msg, response)?;
-    let response = migrate_legacy_collection_info(deps.storage, &env, &msg, response)?;
+    //removed legacy data
     // ... then migrate
     let response = migrate_version(deps.storage, contract_name, contract_version, response)?;
     // ... and update creator and minter AFTER legacy migration
@@ -655,88 +587,13 @@ pub fn migrate_minter(
     Ok(response)
 }
 
-/// Migrates only in case ownership is not present
-/// !!! Important note here: !!!
-/// - creator owns the contract and can update collection info
-/// - minter can mint new tokens
-///
-/// Before v0.19.0 there were confusing naming conventions:
-/// - v0.17.0: minter was replaced by cw_ownable, as a result minter is owner
-/// - v0.16.0 and below: minter was stored in dedicated `minter` store (so NOT using cw_ownable at all)
-pub fn migrate_legacy_minter_and_creator(
-    storage: &mut dyn Storage,
-    api: &dyn Api,
-    _env: &Env,
-    _msg: &Cw721MigrateMsg,
-    response: Response,
-) -> Result<Response, Cw721ContractError> {
-    let minter = MINTER.item.may_load(storage)?;
-    // no migration in case minter is already set
-    if minter.is_some() {
-        return Ok(response);
-    }
-    // in v0.17/18 cw_ownable::OWNERSHIP was used for minter, now it is used for creator
-    let ownership_previously_used_as_minter = CREATOR.item.may_load(storage)?;
-    let creator_and_minter = match ownership_previously_used_as_minter {
-        // v0.17/18 ownership migration
-        Some(ownership) => {
-            // owner is used for both: creator and minter
-            // since it is already set for creator, we only need to migrate minter
-            let owner = ownership.owner.map(|a| a.to_string());
-            MINTER.initialize_owner(storage, api, owner.as_deref())?;
-            owner
-        }
-        // migration below v0.17
-        None => {
-            let legacy_minter_store: Item<Addr> = Item::new("minter");
-            let legacy_minter = legacy_minter_store.load(storage)?;
-            MINTER.initialize_owner(storage, api, Some(legacy_minter.as_str()))?;
-            CREATOR.initialize_owner(storage, api, Some(legacy_minter.as_str()))?;
-            Some(legacy_minter.to_string())
-        }
-    };
-    Ok(response.add_attribute(
-        "creator_and_minter",
-        creator_and_minter.unwrap_or("none".to_string()),
-    ))
-}
 
-/// Migrates only in case collection_info is not present
-pub fn migrate_legacy_collection_info(
-    storage: &mut dyn Storage,
-    env: &Env,
-    _msg: &Cw721MigrateMsg,
-    response: Response,
-) -> Result<Response, Cw721ContractError> {
-    let contract = Cw721Config::<Empty>::default();
-    match contract.collection_info.may_load(storage)? {
-        Some(_) => Ok(response),
-        None => {
-            Ok(response)
-            // // contract info = legacy collection info
-            // let legacy_collection_info_store: Item<cw721_016::ContractInfoResponse> =
-            //     Item::new("nft_info");
-            // let legacy_collection_info = legacy_collection_info_store.load(storage)?;
-            // let collection_info = CollectionInfo {
-            //     name: legacy_collection_info.name.clone(),
-            //     symbol: legacy_collection_info.symbol.clone(),
-            //     updated_at: env.block.time,
-            // };
-            // contract.collection_info.save(storage, &collection_info)?;
-            // Ok(response
-            //     .add_attribute("migrated collection name", legacy_collection_info.name)
-            //     .add_attribute("migrated collection symbol", legacy_collection_info.symbol))
-        }
-    }
-}
 
 impl<'a>
     Cw721Execute<
         DefaultOptionalNftExtension,
         DefaultOptionalNftExtensionMsg,
         DefaultOptionalCollectionExtension,
-        DefaultOptionalCollectionExtensionMsg,
-        Empty,
         Empty,
     > for Cw721OnchainExtensions<'a>
 {
@@ -747,8 +604,6 @@ impl<'a>
         EmptyOptionalNftExtension,
         EmptyOptionalNftExtensionMsg,
         DefaultOptionalCollectionExtension,
-        DefaultOptionalCollectionExtensionMsg,
-        Empty,
         Empty,
     > for Cw721BaseExtensions<'a>
 {
@@ -759,13 +614,11 @@ impl<'a>
         EmptyOptionalNftExtension,
         EmptyOptionalNftExtensionMsg,
         EmptyOptionalCollectionExtension,
-        EmptyOptionalCollectionExtensionMsg,
-        Empty,
         Empty,
     > for Cw721EmptyExtensions<'a>
 {
 }
-
+//TODO: check out what types we need so we can remove the rest
 impl<
         'a,
         TNftExtension,
@@ -779,14 +632,11 @@ impl<
     Cw721Execute<
         TNftExtension,
         TNftExtensionMsg,
-        TCollectionExtension,
-        TCollectionExtensionMsg,
         TExtensionMsg,
         TCustomResponseMsg,
     >
     for Cw721Extensions<
         'a,
-        TNftExtension,
         TNftExtensionMsg,
         TCollectionExtension,
         TCollectionExtensionMsg,

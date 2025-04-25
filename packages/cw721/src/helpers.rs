@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::traits::{Cw721Calls, Cw721CustomMsg, Cw721State};
 use crate::{
-    DefaultOptionalCollectionExtension, DefaultOptionalCollectionExtensionMsg,
+    DefaultOptionalCollectionExtension,
     DefaultOptionalNftExtension, DefaultOptionalNftExtensionMsg,
 };
 use cosmwasm_schema::cw_serde;
@@ -30,7 +30,6 @@ pub struct DefaultCw721Helper(
     pub PhantomData<DefaultOptionalNftExtension>,
     pub PhantomData<DefaultOptionalNftExtensionMsg>,
     pub PhantomData<DefaultOptionalCollectionExtension>,
-    pub PhantomData<DefaultOptionalCollectionExtensionMsg>,
     pub PhantomData<Empty>,
     pub PhantomData<Empty>,
 );
@@ -39,7 +38,6 @@ impl DefaultCw721Helper {
     pub fn new(addr: Addr) -> Self {
         DefaultCw721Helper(
             addr,
-            PhantomData,
             PhantomData,
             PhantomData,
             PhantomData,
@@ -54,7 +52,6 @@ impl
         DefaultOptionalNftExtension,
         DefaultOptionalNftExtensionMsg,
         DefaultOptionalCollectionExtension,
-        DefaultOptionalCollectionExtensionMsg,
         Empty,
         Empty,
     > for DefaultCw721Helper
@@ -90,7 +87,7 @@ impl EmptyCw721Helper {
     }
 }
 
-impl Cw721Calls<Empty, Empty, Empty, Empty, Empty, Empty> for EmptyCw721Helper {
+impl Cw721Calls<Empty, Empty, Empty, Empty, Empty> for EmptyCw721Helper {
     fn addr(&self) -> Addr {
         self.0.clone()
     }
@@ -127,9 +124,7 @@ impl<
     Cw721Calls<
         TNftExtension,
         TNftExtensionMsg,
-        TCollectionExtension,
-        TCollectionExtensionMsg,
-        TExtensionMsg,
+        TCollectionExtension,        TExtensionMsg,
         TExtensionQueryMsg,
     >
     for Cw721Helper<

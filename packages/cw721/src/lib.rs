@@ -12,8 +12,7 @@ pub mod traits;
 use cosmwasm_std::Empty;
 pub use cw_utils::Expiration;
 use msg::{
-    CollectionExtensionMsg, CollectionInfoAndExtensionResponse, NftExtensionMsg,
-    RoyaltyInfoResponse,
+    CollectionInfoAndExtensionResponse, NftExtensionMsg,
 };
 pub use state::{Approval, Attribute, CollectionExtension, NftExtension, RoyaltyInfo};
 
@@ -29,9 +28,6 @@ pub type DefaultOptionalCollectionExtension = Option<CollectionExtension<Royalty
 /// Type for `Option<Empty>`
 pub type EmptyOptionalCollectionExtension = Option<Empty>;
 
-/// Type for `Option<CollectionExtensionMsg<RoyaltyInfoResponse>>`
-pub type DefaultOptionalCollectionExtensionMsg =
-    Option<CollectionExtensionMsg<RoyaltyInfoResponse>>;
 /// Type for `Option<Empty>`
 pub type EmptyOptionalCollectionExtensionMsg = Option<Empty>;
 
@@ -53,6 +49,6 @@ pub type MetaData = NftExtension;
     note = "Please use `CollectionInfoAndExtensionResponse<DefaultOptionalCollectionExtension>` instead"
 )]
 pub type ContractInfoResponse =
-    CollectionInfoAndExtensionResponse<DefaultOptionalCollectionExtension>;
+    CollectionInfoAndExtensionResponse;
 #[cfg(test)]
 pub mod testing;

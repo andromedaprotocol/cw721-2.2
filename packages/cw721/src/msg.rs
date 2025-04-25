@@ -15,8 +15,7 @@ use crate::execute::{assert_creator, assert_minter};
 use crate::state::{
     Attribute, CollectionExtension, CollectionExtensionAttributes, CollectionInfo, NftInfo, Trait,
     ATTRIBUTE_DESCRIPTION, ATTRIBUTE_EXPLICIT_CONTENT, ATTRIBUTE_EXTERNAL_LINK, ATTRIBUTE_IMAGE,
-    ATTRIBUTE_ROYALTY_INFO, ATTRIBUTE_START_TRADING_TIME, CREATOR,
-    MAX_COLLECTION_DESCRIPTION_LENGTH, MAX_ROYALTY_SHARE_DELTA_PCT, MAX_ROYALTY_SHARE_PCT, MINTER,
+    ATTRIBUTE_ROYALTY_INFO, ATTRIBUTE_START_TRADING_TIME
 };
 use crate::traits::{Cw721CustomMsg, Cw721State, FromAttributesState, ToAttributesState};
 use crate::NftExtension;
@@ -24,12 +23,6 @@ use crate::{traits::StateFactory, Approval, RoyaltyInfo};
 
 #[cw_serde]
 pub enum Cw721ExecuteMsg<
-    // NftInfo extension msg for onchain metadata.
-    TNftExtensionMsg,
-    // CollectionInfo extension msg for onchain collection attributes.
-    TCollectionExtensionMsg,
-    // Custom extension msg for custom contract logic. Default implementation is a no-op.
-    TExtensionMsg,
 > {
     #[deprecated(since = "0.19.0", note = "Please use UpdateMinterOwnership instead")]
     /// Deprecated: use UpdateMinterOwnership instead! Will be removed in next release!
@@ -37,10 +30,6 @@ pub enum Cw721ExecuteMsg<
     UpdateMinterOwnership(Action),
     UpdateCreatorOwnership(Action),
 
-    /// The creator is the only one eligible to update `CollectionInfo`.
-    UpdateCollectionInfo {
-        collection_info: CollectionInfoMsg<TCollectionExtensionMsg>,
-    },
     /// Transfer is a base message to move a token to another account without triggering actions
     TransferNft {
         recipient: String,
@@ -86,29 +75,12 @@ pub enum Cw721ExecuteMsg<
         /// Should point to a JSON file that conforms to the ERC721
         /// Metadata JSON Schema
         token_uri: Option<String>,
-        /// Any custom extension used by this contract
-        extension: TNftExtensionMsg,
     },
 
     /// Burn an NFT the sender has access to
     Burn {
         token_id: String,
     },
-
-    /// Custom msg execution. This is a no-op in default implementation.
-    UpdateExtension {
-        msg: TExtensionMsg,
-    },
-
-    /// The creator is the only one eligible to update NFT's token uri and onchain metadata (`NftInfo.extension`).
-    /// NOTE: approvals and owner are not affected by this call, since they belong to the NFT owner.
-    UpdateNftInfo {
-        token_id: String,
-        /// NOTE: Empty string is handled as None
-        token_uri: Option<String>,
-        extension: TNftExtensionMsg,
-    },
-
     /// Sets address to send withdrawn fees to. Only owner can call this.
     SetWithdrawAddress {
         address: String,
@@ -123,14 +95,12 @@ pub enum Cw721ExecuteMsg<
 }
 
 #[cw_serde]
-pub struct Cw721InstantiateMsg<TCollectionExtensionMsg> {
+pub struct Cw721InstantiateMsg {
     /// Name of the NFT contract
     pub name: String,
     /// Symbol of the NFT contract
     pub symbol: String,
     /// Optional extension of the collection metadata
-    pub collection_info_extension: TCollectionExtensionMsg,
-
     /// The minter is the only one who can create new NFTs.
     /// This is designed for a base NFT that is controlled by an external program
     /// or contract. You will likely replace this with custom logic in custom NFTs
@@ -144,14 +114,7 @@ pub struct Cw721InstantiateMsg<TCollectionExtensionMsg> {
 
 #[cw_serde]
 #[derive(QueryResponses)]
-pub enum Cw721QueryMsg<
-    // Return type of NFT metadata defined in `NftInfo` and `AllNftInfo`.
-    TNftExtension,
-    // Return type of collection extension defined in `GetCollectionInfo`.
-    TCollectionExtension,
-    // Custom query msg for custom contract logic. Default implementation returns an empty binary.
-    TExtensionQueryMsg,
-> {
+pub enum Cw721QueryMsg {
     /// Return the owner of the given token, error if token does not exist
     #[returns(OwnerOfResponse)]
     OwnerOf {
@@ -196,16 +159,16 @@ pub enum Cw721QueryMsg<
         since = "0.19.0",
         note = "Please use GetCollectionInfoAndExtension instead"
     )]
-    #[returns(CollectionInfoAndExtensionResponse<TCollectionExtension>)]
+    #[returns(CollectionInfoAndExtensionResponse)]
     /// Deprecated: use GetCollectionInfoAndExtension instead! Will be removed in next release!
     ContractInfo {},
 
     /// Returns `AllCollectionInfoResponse`
-    #[returns(ConfigResponse<TCollectionExtension>)]
+    #[returns(ConfigResponse)]
     GetConfig {},
 
     /// Returns `CollectionInfoAndExtensionResponse`
-    #[returns(CollectionInfoAndExtensionResponse<TCollectionExtension>)]
+    #[returns(CollectionInfoAndExtensionResponse)]
     GetCollectionInfoAndExtension {},
 
     /// returns `AllInfoResponse` which contains contract, collection and nft details
@@ -236,20 +199,13 @@ pub enum Cw721QueryMsg<
     /// With MetaData Extension.
     /// Returns metadata about one particular token, based on *ERC721 Metadata JSON Schema*
     /// but directly from the contract
-    #[returns(NftInfoResponse<TNftExtension>)]
+    #[returns(NftInfoResponse)]
     NftInfo { token_id: String },
-
-    #[returns(Option<NftInfoResponse<TNftExtension>>)]
-    GetNftByExtension {
-        extension: TNftExtension,
-        start_after: Option<String>,
-        limit: Option<u32>,
-    },
 
     /// With MetaData Extension.
     /// Returns the result of both `NftInfo` and `OwnerOf` as one query as an optimization
     /// for clients
-    #[returns(AllNftInfoResponse<TNftExtension>)]
+    #[returns(AllNftInfoResponse)]
     AllNftInfo {
         token_id: String,
         /// unset or false will filter out expired approvals, you must set to true to see them
@@ -271,14 +227,6 @@ pub enum Cw721QueryMsg<
         start_after: Option<String>,
         limit: Option<u32>,
     },
-
-    /// Custom msg query. Default implementation returns an empty binary.
-    #[returns(())]
-    Extension { msg: TExtensionQueryMsg },
-
-    #[returns(())]
-    GetCollectionExtension { msg: TCollectionExtension },
-
     #[returns(Option<String>)]
     GetWithdrawAddress {},
 }
@@ -367,248 +315,24 @@ pub enum AttributeType {
     Decimal,
     Custom,
 }
-
-#[cw_serde]
-/// NOTE: In case `info` is not provided in `create()` or `validate()` (like for migration), creator/minter assertion is skipped.
-pub struct CollectionExtensionMsg<TRoyaltyInfoResponse> {
-    pub description: Option<String>,
-    pub image: Option<String>,
-    pub external_link: Option<String>,
-    pub explicit_content: Option<bool>,
-    pub start_trading_time: Option<Timestamp>,
-    pub royalty_info: Option<TRoyaltyInfoResponse>,
-}
-
-impl<TRoyaltyInfoResponse> Cw721CustomMsg for CollectionExtensionMsg<TRoyaltyInfoResponse> where
-    TRoyaltyInfoResponse: Cw721CustomMsg
-{
-}
-
-impl StateFactory<CollectionExtension<RoyaltyInfo>>
-    for CollectionExtensionMsg<RoyaltyInfoResponse>
-{
-    /// NOTE: In case `info` is not provided (like for migration), creator/minter assertion is skipped.
-    fn create(
-        &self,
-        deps: Deps,
-        env: &Env,
-        info: Option<&MessageInfo>,
-        current: Option<&CollectionExtension<RoyaltyInfo>>,
-    ) -> Result<CollectionExtension<RoyaltyInfo>, Cw721ContractError> {
-        self.validate(deps, env, info, current)?;
-        match current {
-            // Some: update existing metadata
-            Some(current) => {
-                let mut updated = current.clone();
-                if let Some(description) = &self.description {
-                    updated.description.clone_from(description);
-                }
-                if let Some(image) = &self.image {
-                    updated.image.clone_from(image)
-                }
-                if let Some(external_link) = &self.external_link {
-                    updated.external_link = Some(external_link.clone());
-                }
-                if let Some(explicit_content) = self.explicit_content {
-                    updated.explicit_content = Some(explicit_content);
-                }
-                if let Some(start_trading_time) = self.start_trading_time {
-                    updated.start_trading_time = Some(start_trading_time);
-                }
-                if let Some(royalty_info_response) = &self.royalty_info {
-                    match current.royalty_info.clone() {
-                        // Some: existing royalty info for update
-                        Some(current_royalty_info) => {
-                            updated.royalty_info = Some(royalty_info_response.create(
-                                deps,
-                                env,
-                                info,
-                                Some(&current_royalty_info),
-                            )?);
-                        }
-                        // None: no royalty info, so create new
-                        None => {
-                            updated.royalty_info =
-                                Some(royalty_info_response.create(deps, env, info, None)?);
-                        }
-                    }
-                }
-                Ok(updated)
-            }
-            // None: create new metadata
-            None => {
-                let royalty_info = match &self.royalty_info {
-                    // new royalty info
-                    Some(royalty_info) => Some(royalty_info.create(deps, env, info, None)?),
-                    // current royalty is none and new royalty is none
-                    None => None,
-                };
-                let new = CollectionExtension {
-                    description: self.description.clone().unwrap_or_default(),
-                    image: self.image.clone().unwrap_or_default(),
-                    external_link: self.external_link.clone(),
-                    explicit_content: self.explicit_content,
-                    start_trading_time: self.start_trading_time,
-                    royalty_info,
-                };
-                Ok(new)
-            }
-        }
-    }
-
-    /// NOTE: In case `info` is not provided (like for migration), creator/minter assertion is skipped.
-    fn validate(
-        &self,
-        deps: Deps,
-        _env: &Env,
-        info: Option<&MessageInfo>,
-        _current: Option<&CollectionExtension<RoyaltyInfo>>,
-    ) -> Result<(), Cw721ContractError> {
-        let sender = info.map(|i| &i.sender);
-
-        let minter_initialized = MINTER.item.may_load(deps.storage)?;
-        // start trading time can only be updated by minter
-        if self.start_trading_time.is_some()
-            && minter_initialized.is_some()
-            && sender.is_some()
-            && MINTER.assert_owner(deps.storage, sender.unwrap()).is_err()
-            && MINTER.item.exists(deps.storage)
-        {
-            return Err(Cw721ContractError::NotMinter {});
-        }
-
-        // all other props collection extension can only be updated by the creator
-        let creator_initialized = CREATOR.item.may_load(deps.storage)?;
-        if (self.description.is_some()
-            || self.image.is_some()
-            || self.external_link.is_some()
-            || self.explicit_content.is_some())
-            && sender.is_some()
-            && creator_initialized.is_some()
-            && CREATOR.assert_owner(deps.storage, sender.unwrap()).is_err()
-        {
-            return Err(Cw721ContractError::NotCreator {});
-        }
-
-        // check description length, must not be empty and max 512 chars
-        if let Some(description) = &self.description {
-            if description.is_empty() {
-                return Err(Cw721ContractError::CollectionDescriptionEmpty {});
-            }
-            if description.len() > MAX_COLLECTION_DESCRIPTION_LENGTH as usize {
-                return Err(Cw721ContractError::CollectionDescriptionTooLong {
-                    max_length: MAX_COLLECTION_DESCRIPTION_LENGTH,
-                });
-            }
-        }
-
-        // check images are URLs
-        if let Some(image) = &self.image {
-            Url::parse(image)?;
-        }
-        if let Some(external_link) = &self.external_link {
-            Url::parse(external_link)?;
-        }
-        // no need to check royalty info, as it is checked during creation of RoyaltyInfo
-        Ok(())
-    }
-}
-
-#[cw_serde]
-// This is both: a query response, and incoming message during instantiation and execution.
-pub struct RoyaltyInfoResponse {
-    pub payment_address: String,
-    pub share: Decimal,
-}
-
-impl Cw721CustomMsg for RoyaltyInfoResponse {}
-
-impl StateFactory<RoyaltyInfo> for RoyaltyInfoResponse {
-    fn create(
-        &self,
-        deps: Deps,
-        env: &Env,
-        info: Option<&MessageInfo>,
-        current: Option<&RoyaltyInfo>,
-    ) -> Result<RoyaltyInfo, Cw721ContractError> {
-        self.validate(deps, env, info, current)?;
-        match current {
-            // Some: update existing royalty info
-            Some(current) => {
-                let mut updated = current.clone();
-                updated.payment_address = Addr::unchecked(self.payment_address.as_str()); // no check needed, since it is already done in validate
-                updated.share = self.share;
-                Ok(updated)
-            }
-            // None: create new royalty info
-            None => {
-                let new = RoyaltyInfo {
-                    payment_address: Addr::unchecked(self.payment_address.as_str()), // no check needed, since it is already done in validate
-                    share: self.share,
-                };
-                Ok(new)
-            }
-        }
-    }
-
-    fn validate(
-        &self,
-        deps: Deps,
-        _env: &Env,
-        _info: Option<&MessageInfo>,
-        current: Option<&RoyaltyInfo>,
-    ) -> Result<(), Cw721ContractError> {
-        if let Some(current_royalty_info) = current {
-            // check max share delta
-            if current_royalty_info.share < self.share {
-                let share_delta = self.share.abs_diff(current_royalty_info.share);
-
-                if share_delta > Decimal::percent(MAX_ROYALTY_SHARE_DELTA_PCT) {
-                    return Err(Cw721ContractError::InvalidRoyalties(format!(
-                        "Share increase cannot be greater than {MAX_ROYALTY_SHARE_DELTA_PCT}%"
-                    )));
-                }
-            }
-        }
-        // check max share
-        if self.share > Decimal::percent(MAX_ROYALTY_SHARE_PCT) {
-            return Err(Cw721ContractError::InvalidRoyalties(format!(
-                "Share cannot be greater than {MAX_ROYALTY_SHARE_PCT}%"
-            )));
-        }
-        // validate payment address
-        deps.api.addr_validate(self.payment_address.as_str())?;
-        Ok(())
-    }
-}
-
-impl From<RoyaltyInfo> for RoyaltyInfoResponse {
-    fn from(royalty_info: RoyaltyInfo) -> Self {
-        Self {
-            payment_address: royalty_info.payment_address.to_string(),
-            share: royalty_info.share,
-        }
-    }
-}
+//delete royality bullshit
 
 /// This is a wrapper around CollectionInfo that includes the extension.
 #[cw_serde]
-pub struct ConfigResponse<TCollectionExtension> {
+pub struct ConfigResponse {
     pub num_tokens: u64,
     pub minter_ownership: Ownership<Addr>,
     pub creator_ownership: Ownership<Addr>,
     pub withdraw_address: Option<String>,
     pub collection_info: CollectionInfo,
-    pub collection_extension: TCollectionExtension,
     pub contract_info: ContractInfoResponse,
 }
 
 /// This is a wrapper around CollectionInfo that includes the extension.
 #[cw_serde]
-pub struct CollectionInfoAndExtensionResponse<TCollectionExtension> {
+pub struct CollectionInfoAndExtensionResponse {
     pub name: String,
     pub symbol: String,
-    pub extension: TCollectionExtension,
     pub updated_at: Timestamp,
 }
 
@@ -624,90 +348,13 @@ pub struct AllInfoResponse {
     pub num_tokens: u64,
 }
 
-impl<T> From<CollectionInfoAndExtensionResponse<T>> for CollectionInfo {
-    fn from(response: CollectionInfoAndExtensionResponse<T>) -> Self {
+impl From<CollectionInfoAndExtensionResponse> for CollectionInfo {
+    fn from(response: CollectionInfoAndExtensionResponse) -> Self {
         CollectionInfo {
             name: response.name,
             symbol: response.symbol,
             updated_at: response.updated_at,
         }
-    }
-}
-
-impl<TCollectionExtension, TCollectionExtensionMsg>
-    StateFactory<CollectionInfoAndExtensionResponse<TCollectionExtension>>
-    for CollectionInfoMsg<TCollectionExtensionMsg>
-where
-    TCollectionExtension: Cw721State,
-    TCollectionExtensionMsg: Cw721CustomMsg + StateFactory<TCollectionExtension>,
-{
-    fn create(
-        &self,
-        deps: Deps,
-        env: &Env,
-        info: Option<&MessageInfo>,
-        current: Option<&CollectionInfoAndExtensionResponse<TCollectionExtension>>,
-    ) -> Result<CollectionInfoAndExtensionResponse<TCollectionExtension>, Cw721ContractError> {
-        self.validate(deps, env, info, current)?;
-        match current {
-            // Some: update existing metadata
-            Some(current) => {
-                let mut updated = current.clone();
-                if let Some(name) = &self.name {
-                    updated.name.clone_from(name);
-                }
-                if let Some(symbol) = &self.symbol {
-                    updated.symbol.clone_from(symbol);
-                }
-                let current_extension = current.extension.clone();
-                let updated_extension =
-                    self.extension
-                        .create(deps, env, info, Some(&current_extension))?;
-                updated.extension = updated_extension;
-                Ok(updated)
-            }
-            // None: create new metadata
-            None => {
-                let extension = self.extension.create(deps, env, info, None)?;
-                let new = CollectionInfoAndExtensionResponse {
-                    name: self.name.clone().unwrap(),
-                    symbol: self.symbol.clone().unwrap(),
-                    extension,
-                    updated_at: env.block.time,
-                };
-                Ok(new)
-            }
-        }
-    }
-
-    fn validate(
-        &self,
-        deps: Deps,
-        _env: &Env,
-        info: Option<&MessageInfo>,
-        _current: Option<&CollectionInfoAndExtensionResponse<TCollectionExtension>>,
-    ) -> Result<(), Cw721ContractError> {
-        // make sure the name and symbol are not empty
-        if self.name.is_some() && self.name.clone().unwrap().is_empty() {
-            return Err(Cw721ContractError::CollectionNameEmpty {});
-        }
-        if self.symbol.is_some() && self.symbol.clone().unwrap().is_empty() {
-            return Err(Cw721ContractError::CollectionSymbolEmpty {});
-        }
-        // collection metadata can only be updated by the creator. creator assertion is skipped for these cases:
-        // - CREATOR store is empty/not initioized (like in instantiation)
-        // - info is none (like in migration)
-        let creator_initialized = CREATOR.item.may_load(deps.storage)?;
-        if (self.name.is_some() || self.symbol.is_some())
-            && creator_initialized.is_some()
-            && info.is_some()
-            && CREATOR
-                .assert_owner(deps.storage, &info.unwrap().sender)
-                .is_err()
-        {
-            return Err(Cw721ContractError::NotCreator {});
-        }
-        Ok(())
     }
 }
 
@@ -833,21 +480,19 @@ pub struct NumTokensResponse {
 }
 
 #[cw_serde]
-pub struct NftInfoResponse<TNftExtension> {
+pub struct NftInfoResponse {
     /// Universal resource identifier for this NFT
     /// Should point to a JSON file that conforms to the ERC721
     /// Metadata JSON Schema
     pub token_uri: Option<String>,
-    /// You can add any custom metadata here when you extend cw721-base
-    pub extension: TNftExtension,
-}
+   }
 
 #[cw_serde]
-pub struct AllNftInfoResponse<TNftExtension> {
+pub struct AllNftInfoResponse {
     /// Who can transfer the token
     pub access: OwnerOfResponse,
     /// Data on the token itself,
-    pub info: NftInfoResponse<TNftExtension>,
+    pub info: NftInfoResponse,
 }
 
 #[cw_serde]
@@ -866,7 +511,7 @@ pub struct MinterResponse {
 }
 
 #[cw_serde]
-pub struct NftInfoMsg<TNftExtensionMsg> {
+pub struct NftInfoMsg {
     /// The owner of the newly minted NFT
     pub owner: String,
     /// Approvals are stored here, as we clear them all upon transfer and cannot accumulate much
@@ -877,24 +522,17 @@ pub struct NftInfoMsg<TNftExtensionMsg> {
     /// Metadata JSON Schema
     /// NOTE: Empty string is handled as None
     pub token_uri: Option<String>,
-
-    /// You can add any custom metadata here when you extend cw721-base
-    pub extension: TNftExtensionMsg,
 }
 
-impl<TNftExtension, TNftExtensionMsg> StateFactory<NftInfo<TNftExtension>>
-    for NftInfoMsg<TNftExtensionMsg>
-where
-    TNftExtension: Cw721State,
-    TNftExtensionMsg: Cw721CustomMsg + StateFactory<TNftExtension>,
+impl StateFactory<NftInfo>for NftInfoMsg
 {
     fn create(
         &self,
         deps: Deps,
         env: &Env,
         info: Option<&MessageInfo>,
-        optional_current: Option<&NftInfo<TNftExtension>>,
-    ) -> Result<NftInfo<TNftExtension>, Cw721ContractError> {
+        optional_current: Option<&NftInfo>,
+    ) -> Result<NftInfo, Cw721ContractError> {
         self.validate(deps, env, info, optional_current)?;
         match optional_current {
             // Some: update only token uri and extension in existing NFT (but not owner and approvals)
@@ -903,21 +541,15 @@ where
                 if self.token_uri.is_some() {
                     updated.token_uri = empty_as_none(self.token_uri.clone());
                 }
-                // update extension
-                // current extension is a nested option in option, so we need to flatten it
-                let current_extension = optional_current.map(|c| &c.extension);
-                updated.extension = self.extension.create(deps, env, info, current_extension)?;
                 Ok(updated)
             }
             // None: create new NFT, note: msg is of same type, so we can clone it
             None => {
-                let extension = self.extension.create(deps, env, info, None)?;
                 let token_uri = empty_as_none(self.token_uri.clone());
                 Ok(NftInfo {
                     owner: Addr::unchecked(&self.owner), // only for creation we use owner, but not for update!
                     approvals: vec![],
                     token_uri,
-                    extension,
                 })
             }
         }
@@ -928,7 +560,7 @@ where
         deps: Deps,
         _env: &Env,
         info: Option<&MessageInfo>,
-        current: Option<&NftInfo<TNftExtension>>,
+        current: Option<&NftInfo>,
     ) -> Result<(), Cw721ContractError> {
         let info = info.ok_or(Cw721ContractError::NoInfo)?;
         if current.is_none() {

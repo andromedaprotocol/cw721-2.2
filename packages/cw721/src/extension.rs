@@ -5,9 +5,8 @@ use cosmwasm_std::Empty;
 use crate::{
     state::Cw721Config,
     traits::{Cw721CustomMsg, Cw721State},
-    DefaultOptionalCollectionExtension, DefaultOptionalCollectionExtensionMsg,
-    DefaultOptionalNftExtension, DefaultOptionalNftExtensionMsg, EmptyOptionalCollectionExtension,
-    EmptyOptionalCollectionExtensionMsg, EmptyOptionalNftExtension, EmptyOptionalNftExtensionMsg,
+    DefaultOptionalCollectionExtension,DefaultOptionalNftExtensionMsg, EmptyOptionalCollectionExtension,
+    EmptyOptionalCollectionExtensionMsg, EmptyOptionalNftExtensionMsg,
 };
 
 /// Opionated version of generic `Cw721Extensions` with default onchain nft and collection extensions using:
@@ -19,10 +18,9 @@ use crate::{
 /// - `Empty` for custom query msg for custom contract logic.
 /// - `Empty` for custom response msg for custom contract logic.
 pub struct Cw721OnchainExtensions<'a> {
-    pub config: Cw721Config<'a, DefaultOptionalNftExtension>,
+    pub config: Cw721Config<'a>,
     pub(crate) _collection_extension: PhantomData<DefaultOptionalCollectionExtension>,
     pub(crate) _nft_extension_msg: PhantomData<DefaultOptionalNftExtensionMsg>,
-    pub(crate) _collection_extension_msg: PhantomData<DefaultOptionalCollectionExtensionMsg>,
     pub(crate) _extension_msg: PhantomData<Empty>,
     pub(crate) _extension_query_msg: PhantomData<Empty>,
     pub(crate) _custom_response_msg: PhantomData<Empty>,
@@ -31,10 +29,9 @@ pub struct Cw721OnchainExtensions<'a> {
 impl Default for Cw721OnchainExtensions<'static> {
     fn default() -> Self {
         Self {
-            config: Cw721Config::<DefaultOptionalNftExtension>::default(),
+            config: Cw721Config::default(),
             _collection_extension: PhantomData,
             _nft_extension_msg: PhantomData,
-            _collection_extension_msg: PhantomData,
             _extension_msg: PhantomData,
             _extension_query_msg: PhantomData,
             _custom_response_msg: PhantomData,
@@ -51,10 +48,9 @@ impl Default for Cw721OnchainExtensions<'static> {
 /// - `Empty` for custom query msg for custom contract logic.
 /// - `Empty` for custom response msg for custom contract logic.
 pub struct Cw721BaseExtensions<'a> {
-    pub config: Cw721Config<'a, EmptyOptionalNftExtension>,
+    pub config: Cw721Config<'a>,
     pub(crate) _collection_extension: PhantomData<DefaultOptionalCollectionExtension>,
     pub(crate) _nft_extension_msg: PhantomData<EmptyOptionalNftExtensionMsg>,
-    pub(crate) _collection_extension_msg: PhantomData<DefaultOptionalCollectionExtensionMsg>,
     pub(crate) _extension_msg: PhantomData<Empty>,
     pub(crate) _extension_query_msg: PhantomData<Empty>,
     pub(crate) _custom_response_msg: PhantomData<Empty>,
@@ -63,10 +59,9 @@ pub struct Cw721BaseExtensions<'a> {
 impl Default for Cw721BaseExtensions<'static> {
     fn default() -> Self {
         Self {
-            config: Cw721Config::<EmptyOptionalNftExtension>::default(),
+            config: Cw721Config::default(),
             _collection_extension: PhantomData,
             _nft_extension_msg: PhantomData,
-            _collection_extension_msg: PhantomData,
             _extension_msg: PhantomData,
             _extension_query_msg: PhantomData,
             _custom_response_msg: PhantomData,
@@ -83,7 +78,7 @@ impl Default for Cw721BaseExtensions<'static> {
 /// - `Empty` for custom query msg for custom contract logic.
 /// - `Empty` for custom response msg for custom contract logic.
 pub struct Cw721EmptyExtensions<'a> {
-    pub config: Cw721Config<'a, EmptyOptionalNftExtension>,
+    pub config: Cw721Config<'a>,
     pub(crate) _collection_extension: PhantomData<EmptyOptionalCollectionExtension>,
     pub(crate) _nft_extension_msg: PhantomData<EmptyOptionalNftExtensionMsg>,
     pub(crate) _collection_extension_msg: PhantomData<EmptyOptionalCollectionExtensionMsg>,
@@ -95,7 +90,7 @@ pub struct Cw721EmptyExtensions<'a> {
 impl Default for Cw721EmptyExtensions<'static> {
     fn default() -> Self {
         Self {
-            config: Cw721Config::<EmptyOptionalNftExtension>::default(),
+            config: Cw721Config::default(),
             _collection_extension: PhantomData,
             _nft_extension_msg: PhantomData,
             _collection_extension_msg: PhantomData,
@@ -174,7 +169,6 @@ impl Default for Cw721EmptyExtensions<'static> {
 pub struct Cw721Extensions<
     'a,
     // NftInfo extension (onchain metadata).
-    TNftExtension,
     // NftInfo extension msg for onchain metadata.
     TNftExtensionMsg,
     // CollectionInfo extension (onchain attributes).
@@ -188,12 +182,11 @@ pub struct Cw721Extensions<
     // Defines for `CosmosMsg::Custom<T>` in response. Barely used, so `Empty` can be used.
     TCustomResponseMsg,
 > where
-    TNftExtension: Cw721State,
     TNftExtensionMsg: Cw721CustomMsg,
     TCollectionExtension: Cw721State,
     TCollectionExtensionMsg: Cw721CustomMsg,
 {
-    pub config: Cw721Config<'a, TNftExtension>,
+    pub config: Cw721Config<'a>,
     pub(crate) _collection_extension: PhantomData<TCollectionExtension>,
     pub(crate) _nft_extension_msg: PhantomData<TNftExtensionMsg>,
     pub(crate) _collection_extension_msg: PhantomData<TCollectionExtensionMsg>,
@@ -203,7 +196,6 @@ pub struct Cw721Extensions<
 }
 
 impl<
-        TNftExtension,
         TNftExtensionMsg,
         TCollectionExtension,
         TCollectionExtensionMsg,
@@ -213,7 +205,6 @@ impl<
     > Default
     for Cw721Extensions<
         'static,
-        TNftExtension,
         TNftExtensionMsg,
         TCollectionExtension,
         TCollectionExtensionMsg,
@@ -222,7 +213,6 @@ impl<
         TCustomResponseMsg,
     >
 where
-    TNftExtension: Cw721State,
     TNftExtensionMsg: Cw721CustomMsg,
     TCollectionExtension: Cw721State,
     TCollectionExtensionMsg: Cw721CustomMsg,
