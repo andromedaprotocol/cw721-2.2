@@ -1,52 +1,40 @@
 use cosmwasm_std::{
-    Addr, Api, BankMsg, Binary, Coin, CustomMsg, Deps, DepsMut, Empty, Env, MessageInfo, Response,
-    StdResult, Storage,
+    Addr, Api, BankMsg, Binary, Coin, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
+    Storage,
 };
 use cw_ownable::{Action, Ownership, OwnershipError};
 use cw_utils::Expiration;
 
 use crate::{
     error::Cw721ContractError,
-    extension::{
-        Cw721BaseExtensions, Cw721EmptyExtensions, Cw721Extensions, Cw721OnchainExtensions,
-    },
+    extension::Cw721BaseExtensions,
     helpers::value_or_empty,
-    msg::{CollectionInfoMsg, Cw721InstantiateMsg, Cw721MigrateMsg, NftInfoMsg},
-    query::query_collection_info_and_extension,
+    msg::{Cw721InstantiateMsg, Cw721MigrateMsg, NftInfoMsg},
     receiver::Cw721ReceiveMsg,
     state::{Cw721Config, NftInfo, CREATOR, MINTER},
-    traits::{
-        Cw721CustomMsg, Cw721Execute, Cw721State, FromAttributesState, StateFactory,
-        ToAttributesState,
-    },
-    Approval, DefaultOptionalCollectionExtension,
-    DefaultOptionalNftExtension, DefaultOptionalNftExtensionMsg, EmptyOptionalCollectionExtension,
-    EmptyOptionalCollectionExtensionMsg, EmptyOptionalNftExtension, EmptyOptionalNftExtensionMsg,
+    traits::{Cw721Execute, StateFactory},
+    Approval,
 };
 
 // ------- instantiate -------
-pub fn instantiate_with_version<TCustomResponseMsg>(
+pub fn instantiate_with_version(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     msg: Cw721InstantiateMsg,
     contract_name: &str,
     contract_version: &str,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
-where
-{
+) -> Result<Response, Cw721ContractError> {
     cw2::set_contract_version(deps.storage, contract_name, contract_version)?;
     instantiate(deps, env, info, msg)
 }
 
-pub fn instantiate<TCustomResponseMsg>(
+pub fn instantiate(
     deps: DepsMut,
-    env: &Env,
+    _env: &Env,
     info: &MessageInfo,
     msg: Cw721InstantiateMsg,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
-where
-{
+) -> Result<Response, Cw721ContractError> {
     // ---- set minter and creator ----
     // use info.sender if None is passed
     let minter: &str = match msg.minter.as_deref() {
@@ -64,7 +52,7 @@ where
 
     if let Some(withdraw_address) = msg.withdraw_address.clone() {
         let creator = deps.api.addr_validate(creator)?;
-        set_withdraw_address::<TCustomResponseMsg>(deps, &creator, withdraw_address)?;
+        set_withdraw_address(deps, &creator, withdraw_address)?;
     }
 
     Ok(Response::default()
@@ -89,16 +77,13 @@ pub fn initialize_minter(
     MINTER.initialize_owner(storage, api, minter)
 }
 
-pub fn transfer_nft<TNftExtension>(
+pub fn transfer_nft(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     recipient: &str,
     token_id: &str,
-) -> Result<NftInfo, Cw721ContractError>
-where
-    TNftExtension: Cw721State,  
-{
+) -> Result<NftInfo, Cw721ContractError> {
     let config = Cw721Config::default();
     let mut token = config.nft_info.load(deps.storage, token_id)?;
     // ensure we have permissions
@@ -110,20 +95,16 @@ where
     Ok(token)
 }
 
-pub fn send_nft<TNftExtension, TCustomResponseMsg>(
+pub fn send_nft(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     contract: String,
     token_id: String,
     msg: Binary,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
-where
-    TNftExtension: Cw721State,
-    TCustomResponseMsg: CustomMsg,
-{
+) -> Result<Response, Cw721ContractError> {
     // Transfer token
-    transfer_nft::<TNftExtension>(deps, env, info, &contract, &token_id)?;
+    transfer_nft(deps, env, info, &contract, &token_id)?;
 
     let send = Cw721ReceiveMsg {
         sender: info.sender.to_string(),
@@ -140,19 +121,15 @@ where
         .add_attribute("token_id", token_id))
 }
 
-pub fn approve<TNftExtension, TCustomResponseMsg>(
+pub fn approve(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     spender: String,
     token_id: String,
     expires: Option<Expiration>,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
-where
-    TNftExtension: Cw721State,
-    TCustomResponseMsg: CustomMsg,
-{
-    update_approvals::<TNftExtension>(deps, env, info, &spender, &token_id, true, expires)?;
+) -> Result<Response, Cw721ContractError> {
+    update_approvals(deps, env, info, &spender, &token_id, true, expires)?;
 
     Ok(Response::new()
         .add_attribute("action", "approve")
@@ -162,7 +139,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn update_approvals<TNftExtension>(
+pub fn update_approvals(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
@@ -171,8 +148,7 @@ pub fn update_approvals<TNftExtension>(
     // if add == false, remove. if add == true, remove then set with this expiration
     add: bool,
     expires: Option<Expiration>,
-) -> Result<NftInfo, Cw721ContractError>
-{
+) -> Result<NftInfo, Cw721ContractError> {
     let config = Cw721Config::default();
     let mut token = config.nft_info.load(deps.storage, token_id)?;
     // ensure we have permissions
@@ -201,17 +177,14 @@ pub fn update_approvals<TNftExtension>(
     Ok(token)
 }
 
-pub fn revoke<TNftExtension, TCustomResponseMsg>(
+pub fn revoke(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     spender: String,
     token_id: String,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
-where
-    TNftExtension: Cw721State,
-{
-    update_approvals::<TNftExtension>(deps, env, info, &spender, &token_id, false, None)?;
+) -> Result<Response, Cw721ContractError> {
+    update_approvals(deps, env, info, &spender, &token_id, false, None)?;
 
     Ok(Response::new()
         .add_attribute("action", "revoke")
@@ -220,13 +193,13 @@ where
         .add_attribute("token_id", token_id))
 }
 
-pub fn approve_all<TCustomResponseMsg>(
+pub fn approve_all(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     operator: String,
     expires: Option<Expiration>,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+) -> Result<Response, Cw721ContractError> {
     // reject expired data as invalid
     let expires = expires.unwrap_or_default();
     if expires.is_expired(&env.block) {
@@ -248,12 +221,12 @@ pub fn approve_all<TCustomResponseMsg>(
         .add_attribute("operator", operator))
 }
 
-pub fn revoke_all<TCustomResponseMsg>(
+pub fn revoke_all(
     deps: DepsMut,
     _env: &Env,
     info: &MessageInfo,
     operator: String,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+) -> Result<Response, Cw721ContractError> {
     let operator_addr = deps.api.addr_validate(&operator)?;
     let config = Cw721Config::default();
     config
@@ -266,12 +239,12 @@ pub fn revoke_all<TCustomResponseMsg>(
         .add_attribute("operator", operator))
 }
 
-pub fn burn_nft<TCustomResponseMsg>(
+pub fn burn_nft(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     token_id: String,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+) -> Result<Response, Cw721ContractError> {
     let config = Cw721Config::default();
     let token = config.nft_info.load(deps.storage, &token_id)?;
     check_can_send(deps.as_ref(), env, info.sender.as_str(), &token)?;
@@ -286,19 +259,14 @@ pub fn burn_nft<TCustomResponseMsg>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn mint<TNftExtension, TNftExtensionMsg, TCustomResponseMsg>(
+pub fn mint(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     token_id: String,
     owner: String,
     token_uri: Option<String>,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
-where
-    TNftExtension: Cw721State,
-    TNftExtensionMsg: Cw721CustomMsg + StateFactory<TNftExtension>,
-    TCustomResponseMsg: CustomMsg,
-{
+) -> Result<Response, Cw721ContractError> {
     // create the token
     let token_msg = NftInfoMsg {
         owner: owner.clone(),
@@ -327,24 +295,24 @@ where
     Ok(res)
 }
 
-pub fn update_minter_ownership<TCustomResponseMsg>(
+pub fn update_minter_ownership(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     action: Action,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+) -> Result<Response, Cw721ContractError> {
     let ownership = MINTER.update_ownership(deps, &env.block, &info.sender, action)?;
     Ok(Response::new()
         .add_attribute("update_minter_ownership", info.sender.to_string())
         .add_attributes(ownership.into_attributes()))
 }
 
-pub fn update_creator_ownership<TCustomResponseMsg>(
+pub fn update_creator_ownership(
     deps: DepsMut,
     env: &Env,
     info: &MessageInfo,
     action: Action,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+) -> Result<Response, Cw721ContractError> {
     let ownership = CREATOR.update_ownership(deps, &env.block, &info.sender, action)?;
     Ok(Response::new()
         .add_attribute("update_creator_ownership", info.sender.to_string())
@@ -353,17 +321,14 @@ pub fn update_creator_ownership<TCustomResponseMsg>(
 
 /// The creator is the only one eligible to update NFT's token uri and onchain metadata (`NftInfo.extension`).
 /// NOTE: approvals and owner are not affected by this call, since they belong to the NFT owner.
-pub fn update_nft_info<TNftExtensionMsg, TCustomResponseMsg>(
+pub fn update_nft_info(
     deps: DepsMut,
     env: &Env,
     info: Option<&MessageInfo>,
     token_id: String,
     token_uri: Option<String>,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError>
-where
-    TCustomResponseMsg: CustomMsg,
-{
-        let contract = Cw721Config::default();
+) -> Result<Response, Cw721ContractError> {
+    let contract = Cw721Config::default();
     let current_nft_info = contract.nft_info.load(deps.storage, &token_id)?;
     let nft_info_msg = NftInfoMsg {
         owner: current_nft_info.owner.to_string(),
@@ -377,11 +342,11 @@ where
         .add_attribute("token_id", token_id))
 }
 
-pub fn set_withdraw_address<TCustomResponseMsg>(
+pub fn set_withdraw_address(
     deps: DepsMut,
     sender: &Addr,
     address: String,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+) -> Result<Response, Cw721ContractError> {
     CREATOR.assert_owner(deps.storage, sender)?;
     deps.api.addr_validate(&address)?;
     let config = Cw721Config::default();
@@ -391,10 +356,10 @@ pub fn set_withdraw_address<TCustomResponseMsg>(
         .add_attribute("address", address))
 }
 
-pub fn remove_withdraw_address<TCustomResponseMsg>(
+pub fn remove_withdraw_address(
     storage: &mut dyn Storage,
     sender: &Addr,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+) -> Result<Response, Cw721ContractError> {
     CREATOR.assert_owner(storage, sender)?;
     let config = Cw721Config::default();
     let address = config.withdraw_address.may_load(storage)?;
@@ -409,14 +374,12 @@ pub fn remove_withdraw_address<TCustomResponseMsg>(
     }
 }
 
-pub fn withdraw_funds<TCustomResponseMsg>(
+pub fn withdraw_funds(
     storage: &mut dyn Storage,
     amount: &Coin,
-) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+) -> Result<Response, Cw721ContractError> {
     let config = Cw721Config::default();
-    let withdraw_address = config
-        .withdraw_address
-        .may_load(storage)?;
+    let withdraw_address = config.withdraw_address.may_load(storage)?;
     match withdraw_address {
         Some(address) => {
             let msg = BankMsg::Send {
@@ -439,8 +402,7 @@ pub fn check_can_approve(
     env: &Env,
     sender: &str,
     token: &NftInfo,
-) -> Result<(), Cw721ContractError>
-{
+) -> Result<(), Cw721ContractError> {
     let sender = deps.api.addr_validate(sender)?;
     // owner can approve
     if token.owner == sender {
@@ -587,68 +549,4 @@ pub fn migrate_minter(
     Ok(response)
 }
 
-
-
-impl<'a>
-    Cw721Execute<
-        DefaultOptionalNftExtension,
-        DefaultOptionalNftExtensionMsg,
-        DefaultOptionalCollectionExtension,
-        Empty,
-    > for Cw721OnchainExtensions<'a>
-{
-}
-
-impl<'a>
-    Cw721Execute<
-        EmptyOptionalNftExtension,
-        EmptyOptionalNftExtensionMsg,
-        DefaultOptionalCollectionExtension,
-        Empty,
-    > for Cw721BaseExtensions<'a>
-{
-}
-
-impl<'a>
-    Cw721Execute<
-        EmptyOptionalNftExtension,
-        EmptyOptionalNftExtensionMsg,
-        EmptyOptionalCollectionExtension,
-        Empty,
-    > for Cw721EmptyExtensions<'a>
-{
-}
-//TODO: check out what types we need so we can remove the rest
-impl<
-        'a,
-        TNftExtension,
-        TNftExtensionMsg,
-        TCollectionExtension,
-        TCollectionExtensionMsg,
-        TExtensionMsg,
-        TExtensionQueryMsg,
-        TCustomResponseMsg,
-    >
-    Cw721Execute<
-        TNftExtension,
-        TNftExtensionMsg,
-        TExtensionMsg,
-        TCustomResponseMsg,
-    >
-    for Cw721Extensions<
-        'a,
-        TNftExtensionMsg,
-        TCollectionExtension,
-        TCollectionExtensionMsg,
-        TExtensionMsg,
-        TExtensionQueryMsg,
-        TCustomResponseMsg,
-    >
-where
-    TNftExtension: Cw721State,
-    TNftExtensionMsg: Cw721CustomMsg + StateFactory<TNftExtension>,
-    TCollectionExtension: Cw721State + ToAttributesState + FromAttributesState,
-    TCollectionExtensionMsg: Cw721CustomMsg + StateFactory<TCollectionExtension>,
-    TCustomResponseMsg: CustomMsg,
-{
-}
+impl<'a> Cw721Execute for Cw721BaseExtensions<'a> {}

@@ -9,7 +9,7 @@ use cw_utils::Expiration;
 use serde::de::DeserializeOwned;
 
 use crate::error::Cw721ContractError;
-use crate::traits::{Contains, Cw721CustomMsg, Cw721State, FromAttributesState, ToAttributesState};
+use crate::traits::{Contains, Cw721State, FromAttributesState, ToAttributesState};
 use crate::{traits::StateFactory, NftExtensionMsg};
 
 /// Creator owns this contract and can update collection info!
@@ -41,8 +41,7 @@ pub const ATTRIBUTE_START_TRADING_TIME: &str = "start_trading_time";
 pub const ATTRIBUTE_ROYALTY_INFO: &str = "royalty_info";
 // ----------------------
 
-pub struct Cw721Config<'a>
-{
+pub struct Cw721Config<'a> {
     /// Note: replaces deprecated/legacy key "nft_info"!
     pub collection_info: Item<CollectionInfo>,
     pub collection_extension: Map<String, Attribute>,
@@ -54,8 +53,7 @@ pub struct Cw721Config<'a>
     pub withdraw_address: Item<String>,
 }
 
-impl Default for Cw721Config<'static>
-{
+impl Default for Cw721Config<'static> {
     fn default() -> Self {
         Self::new(
             // `cw721_` prefix is added for avoiding conflicts with other contracts.
@@ -70,9 +68,7 @@ impl Default for Cw721Config<'static>
     }
 }
 
-impl<'a> Cw721Config<'a>
-where
-{
+impl<'a> Cw721Config<'a> {
     fn new(
         collection_info_key: &'static str,
         collection_info_extension_key: &'static str,
@@ -143,18 +139,12 @@ impl Approval {
     }
 }
 
-pub struct TokenIndexes<'a>
-where
-{
+pub struct TokenIndexes<'a> {
     pub owner: MultiIndex<'a, Addr, NftInfo, String>,
 }
 
-impl<'a> IndexList<NftInfo> for TokenIndexes<'a>
-where
-{
-    fn get_indexes(
-        &'_ self,
-    ) -> Box<dyn Iterator<Item = &'_ dyn Index<NftInfo>> + '_> {
+impl<'a> IndexList<NftInfo> for TokenIndexes<'a> {
+    fn get_indexes(&'_ self) -> Box<dyn Iterator<Item = &'_ dyn Index<NftInfo>> + '_> {
         let v: Vec<&dyn Index<NftInfo>> = vec![&self.owner];
         Box::new(v.into_iter())
     }
@@ -192,7 +182,6 @@ pub struct RoyaltyInfo {
 }
 
 impl Cw721State for RoyaltyInfo {}
-impl Cw721CustomMsg for RoyaltyInfo {}
 
 impl ToAttributesState for Empty {
     fn to_attributes_state(&self) -> Result<Vec<Attribute>, Cw721ContractError> {

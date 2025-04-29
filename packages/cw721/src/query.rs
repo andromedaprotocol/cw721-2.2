@@ -1,15 +1,11 @@
-use cosmwasm_std::{
-    Addr, BlockInfo, CustomMsg, Deps, Empty, Env, Order, StdError, StdResult, Storage,
-};
+use cosmwasm_std::{Addr, BlockInfo, Deps, Env, Order, StdError, StdResult, Storage};
 use cw_ownable::Ownership;
 use cw_storage_plus::Bound;
 use cw_utils::{maybe_addr, Expiration};
 
 use crate::{
     error::Cw721ContractError,
-    extension::{
-        Cw721BaseExtensions, Cw721EmptyExtensions, Cw721Extensions, Cw721OnchainExtensions,
-    },
+    extension::Cw721BaseExtensions,
     msg::{
         AllInfoResponse, AllNftInfoResponse, ApprovalResponse, ApprovalsResponse,
         CollectionInfoAndExtensionResponse, ConfigResponse, MinterResponse, NftInfoResponse,
@@ -19,9 +15,7 @@ use crate::{
         Approval, CollectionExtensionAttributes, CollectionInfo, Cw721Config, NftInfo, CREATOR,
         MINTER,
     },
-    traits::{Contains, Cw721CustomMsg, Cw721Query, Cw721State, FromAttributesState},
-    DefaultOptionalCollectionExtension, DefaultOptionalNftExtension,
-    EmptyOptionalCollectionExtension, EmptyOptionalNftExtension,
+    traits::Cw721Query,
 };
 
 pub const DEFAULT_LIMIT: u32 = 10;
@@ -35,8 +29,7 @@ pub fn humanize_approvals(
     block: &BlockInfo,
     nft_info: &NftInfo,
     include_expired_approval: bool,
-) -> Vec<Approval>
-{
+) -> Vec<Approval> {
     nft_info
         .approvals
         .iter()
@@ -91,8 +84,7 @@ pub fn query_collection_extension_attributes(
 pub fn query_config(
     deps: Deps,
     contract_addr: impl Into<String>,
-) -> Result<ConfigResponse, Cw721ContractError>
-{
+) -> Result<ConfigResponse, Cw721ContractError> {
     let collection_info = query_collection_info(deps.storage)?;
     let num_tokens = query_num_tokens(deps.storage)?.count;
     let minter_ownership = query_minter_ownership(deps.storage)?;
@@ -110,8 +102,7 @@ pub fn query_config(
 }
 pub fn query_collection_info_and_extension(
     deps: Deps,
-) -> Result<CollectionInfoAndExtensionResponse, Cw721ContractError>
-{
+) -> Result<CollectionInfoAndExtensionResponse, Cw721ContractError> {
     let collection_info = query_collection_info(deps.storage)?;
     Ok(CollectionInfoAndExtensionResponse {
         name: collection_info.name,
@@ -140,21 +131,12 @@ pub fn query_num_tokens(storage: &dyn Storage) -> StdResult<NumTokensResponse> {
     Ok(NumTokensResponse { count })
 }
 
-pub fn query_nft_info<TNftExtension>(
-    storage: &dyn Storage,
-    token_id: String,
-) -> StdResult<NftInfoResponse>
-where
-    TNftExtension: Cw721State,
-{
-    let info = Cw721Config::default()
-        .nft_info
-        .load(storage, &token_id)?;
+pub fn query_nft_info(storage: &dyn Storage, token_id: String) -> StdResult<NftInfoResponse> {
+    let info = Cw721Config::default().nft_info.load(storage, &token_id)?;
     Ok(NftInfoResponse {
         token_uri: info.token_uri,
     })
 }
-
 
 pub fn query_owner_of(
     deps: Deps,
@@ -334,13 +316,12 @@ pub fn query_all_tokens(
     Ok(TokensResponse { tokens })
 }
 
-pub fn query_all_nft_info<TNftExtension>(
+pub fn query_all_nft_info(
     deps: Deps,
     env: &Env,
     token_id: String,
     include_expired_approval: bool,
-) -> StdResult<AllNftInfoResponse>
-{
+) -> StdResult<AllNftInfoResponse> {
     let nft_info = Cw721Config::default()
         .nft_info
         .load(deps.storage, &token_id)?;
@@ -361,46 +342,4 @@ pub fn query_withdraw_address(deps: Deps) -> StdResult<Option<String>> {
         .may_load(deps.storage)
 }
 
-impl<'a> Cw721Query<DefaultOptionalNftExtension, DefaultOptionalCollectionExtension, Empty>
-    for Cw721OnchainExtensions<'a>
-{
-}
-
-impl<'a> Cw721Query<EmptyOptionalNftExtension, DefaultOptionalCollectionExtension, Empty>
-    for Cw721BaseExtensions<'a>
-{
-}
-
-impl<'a> Cw721Query<EmptyOptionalNftExtension, EmptyOptionalCollectionExtension, Empty>
-    for Cw721EmptyExtensions<'a>
-{
-}
-
-impl<
-        'a,
-        TNftExtension,
-        TNftExtensionMsg,
-        TCollectionExtension,
-        TCollectionExtensionMsg,
-        TExtensionMsg,
-        TExtensionQueryMsg,
-        TCustomResponseMsg,
-    > Cw721Query<TNftExtension, TCollectionExtension, TExtensionQueryMsg>
-    for Cw721Extensions<
-        'a,
-        TNftExtensionMsg,
-        TCollectionExtension,
-        TCollectionExtensionMsg,
-        TExtensionMsg,
-        TExtensionQueryMsg,
-        TCustomResponseMsg,
-    >
-where
-    TNftExtension: Cw721State + Contains,
-    TNftExtensionMsg: Cw721CustomMsg,
-    TCollectionExtension: Cw721State + FromAttributesState,
-    TCollectionExtensionMsg: Cw721CustomMsg,
-    TExtensionQueryMsg: Cw721CustomMsg,
-    TCustomResponseMsg: CustomMsg,
-{
-}
+impl<'a> Cw721Query for Cw721BaseExtensions<'a> {}

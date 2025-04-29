@@ -15,21 +15,19 @@ use crate::execute::{assert_creator, assert_minter};
 use crate::state::{
     Attribute, CollectionExtension, CollectionExtensionAttributes, CollectionInfo, NftInfo, Trait,
     ATTRIBUTE_DESCRIPTION, ATTRIBUTE_EXPLICIT_CONTENT, ATTRIBUTE_EXTERNAL_LINK, ATTRIBUTE_IMAGE,
-    ATTRIBUTE_ROYALTY_INFO, ATTRIBUTE_START_TRADING_TIME
+    ATTRIBUTE_ROYALTY_INFO, ATTRIBUTE_START_TRADING_TIME,
 };
-use crate::traits::{Cw721CustomMsg, Cw721State, FromAttributesState, ToAttributesState};
+use crate::traits::{Cw721State, FromAttributesState, ToAttributesState};
 use crate::NftExtension;
 use crate::{traits::StateFactory, Approval, RoyaltyInfo};
 
 #[cw_serde]
-pub enum Cw721ExecuteMsg<
-> {
+pub enum Cw721ExecuteMsg {
     #[deprecated(since = "0.19.0", note = "Please use UpdateMinterOwnership instead")]
     /// Deprecated: use UpdateMinterOwnership instead! Will be removed in next release!
     UpdateOwnership(Action),
     UpdateMinterOwnership(Action),
     UpdateCreatorOwnership(Action),
-
     /// Transfer is a base message to move a token to another account without triggering actions
     TransferNft {
         recipient: String,
@@ -485,7 +483,7 @@ pub struct NftInfoResponse {
     /// Should point to a JSON file that conforms to the ERC721
     /// Metadata JSON Schema
     pub token_uri: Option<String>,
-   }
+}
 
 #[cw_serde]
 pub struct AllNftInfoResponse {
@@ -524,8 +522,7 @@ pub struct NftInfoMsg {
     pub token_uri: Option<String>,
 }
 
-impl StateFactory<NftInfo>for NftInfoMsg
-{
+impl StateFactory<NftInfo> for NftInfoMsg {
     fn create(
         &self,
         deps: Deps,
@@ -598,8 +595,6 @@ pub struct NftExtensionMsg {
     /// NOTE: Empty string is handled as None
     pub youtube_url: Option<String>,
 }
-
-impl Cw721CustomMsg for NftExtensionMsg {}
 
 impl From<NftExtension> for NftExtensionMsg {
     fn from(extension: NftExtension) -> Self {
@@ -728,7 +723,7 @@ pub fn empty_as_none(value: Option<String>) -> Option<String> {
 impl<TMsg, TState> StateFactory<Option<TState>> for Option<TMsg>
 where
     TState: Cw721State,
-    TMsg: Cw721CustomMsg + StateFactory<TState>,
+    TMsg: StateFactory<TState>,
 {
     fn create(
         &self,
@@ -737,11 +732,10 @@ where
         info: Option<&MessageInfo>,
         current: Option<&Option<TState>>,
     ) -> Result<Option<TState>, Cw721ContractError> {
-        // no msg, so no validation needed
         if self.is_none() {
             return Ok(None);
         }
-        let msg = self.clone().unwrap();
+        let msg = self.as_ref().unwrap();
         // current is a nested option in option, so we need to flatten it
         let current = current.and_then(|c| c.as_ref());
         let created_or_updated = msg.create(deps, env, info, current)?;
@@ -755,11 +749,10 @@ where
         info: Option<&MessageInfo>,
         current: Option<&Option<TState>>,
     ) -> Result<(), Cw721ContractError> {
-        // no msg, so no validation needed
         if self.is_none() {
             return Ok(());
         }
-        let msg = self.clone().unwrap();
+        let msg = self.as_ref().unwrap();
         // current is a nested option in option, so we need to flatten it
         let current = current.and_then(|c| c.as_ref());
         msg.validate(deps, env, info, current)

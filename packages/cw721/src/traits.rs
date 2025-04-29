@@ -1,28 +1,25 @@
 use std::fmt::Debug;
 
 use cosmwasm_std::{
-    to_json_binary, Addr, Api, Binary, Coin, CosmosMsg, CustomMsg, Deps, DepsMut, Empty, Env,
-    MessageInfo, QuerierWrapper, Response, StdResult, Storage, WasmMsg, WasmQuery,
+    to_json_binary, Addr, Api, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo,
+    QuerierWrapper, Response, StdResult, Storage, WasmMsg, WasmQuery,
 };
 use cw_ownable::{Action, Ownership};
 use cw_utils::Expiration;
-use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Serialize};
 
 #[allow(deprecated)]
 use crate::{
     error::Cw721ContractError,
     execute::{
-        approve, approve_all, burn_nft, initialize_creator, initialize_minter, instantiate,
-        instantiate_with_version, migrate, mint, remove_withdraw_address, revoke, revoke_all,
-        send_nft, set_withdraw_address, transfer_nft,
-        update_creator_ownership, update_minter_ownership, update_nft_info, withdraw_funds,
+        approve, burn_nft, initialize_creator, initialize_minter, instantiate,
+        instantiate_with_version, migrate, mint, revoke, send_nft, transfer_nft, update_nft_info,
     },
     msg::{
         AllNftInfoResponse, ApprovalResponse, ApprovalsResponse,
-        CollectionInfoAndExtensionResponse, Cw721ExecuteMsg,
-        Cw721InstantiateMsg, Cw721MigrateMsg, Cw721QueryMsg, MinterResponse, NftInfoResponse,
-        NumTokensResponse, OperatorResponse, OperatorsResponse, OwnerOfResponse, TokensResponse,
+        CollectionInfoAndExtensionResponse, Cw721ExecuteMsg, Cw721InstantiateMsg, Cw721MigrateMsg,
+        Cw721QueryMsg, MinterResponse, NftInfoResponse, NumTokensResponse, OperatorResponse,
+        OperatorsResponse, OwnerOfResponse, TokensResponse,
     },
     query::{
         query_all_nft_info, query_all_tokens, query_approval, query_approvals,
@@ -35,6 +32,10 @@ use crate::{
     Attribute,
 };
 use crate::{
+    execute::{
+        approve_all, remove_withdraw_address, revoke_all, set_withdraw_address,
+        update_creator_ownership, update_minter_ownership, withdraw_funds,
+    },
     msg::{AllInfoResponse, ConfigResponse},
     query::{query_all_info, query_config},
     Approval,
@@ -49,15 +50,11 @@ use crate::{
 /// `impl<T> CustomMsg for Option<T> where T: CustomMsg {}`
 ///
 /// This will be removed once the `CustomMsg` trait is moved to the `cosmwasm_std` crate: https://github.com/CosmWasm/cosmwasm/issues/2056
-pub trait Cw721CustomMsg: Serialize + Clone + Debug + PartialEq + JsonSchema {}
 
 pub trait Cw721State: Serialize + DeserializeOwned + Clone + Debug {}
 
 impl Cw721State for Empty {}
 impl<T> Cw721State for Option<T> where T: Cw721State {}
-
-impl Cw721CustomMsg for Empty {}
-impl<T> Cw721CustomMsg for Option<T> where T: Cw721CustomMsg {}
 
 /// e.g. for checking whether an NFT has specific traits (metadata).
 pub trait Contains {
@@ -79,28 +76,6 @@ pub trait StateFactory<TState> {
         info: Option<&MessageInfo>,
         current: Option<&TState>,
     ) -> Result<(), Cw721ContractError>;
-}
-
-impl StateFactory<Empty> for Empty {
-    fn create(
-        &self,
-        _deps: Deps,
-        _env: &Env,
-        _info: Option<&MessageInfo>,
-        _current: Option<&Empty>,
-    ) -> Result<Empty, Cw721ContractError> {
-        Ok(Empty {})
-    }
-
-    fn validate(
-        &self,
-        _deps: Deps,
-        _env: &Env,
-        _info: Option<&MessageInfo>,
-        _current: Option<&Empty>,
-    ) -> Result<(), Cw721ContractError> {
-        Ok(())
-    }
 }
 
 pub trait ToAttributesState {
@@ -137,21 +112,7 @@ where
 }
 
 /// Trait with generic onchain nft and collection extensions used to execute the contract logic and contains default implementations for all messages.
-pub trait Cw721Execute<
-    // NftInfo extension (onchain metadata).
-    TNftExtension,
-    // NftInfo extension msg for onchain metadata.
-    TNftExtensionMsg,
-    // CollectionInfo extension (onchain attributes).
-    // Custom extension msg for custom contract logic. Default implementation is a no-op.
-    TExtensionMsg,
-    // Defines for `CosmosMsg::Custom<T>` in response. Barely used, so `Empty` can be used.
-    TCustomResponseMsg,
-> where
-    TNftExtension: Cw721State,
-    TNftExtensionMsg: Cw721CustomMsg + StateFactory<TNftExtension>,
-    TCustomResponseMsg: CustomMsg,
-{
+pub trait Cw721Execute {
     fn instantiate_with_version(
         &self,
         deps: DepsMut,
@@ -160,7 +121,7 @@ pub trait Cw721Execute<
         msg: Cw721InstantiateMsg,
         contract_name: &str,
         contract_version: &str,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+    ) -> Result<Response, Cw721ContractError> {
         instantiate_with_version(deps, env, info, msg, contract_name, contract_version)
     }
 
@@ -170,7 +131,7 @@ pub trait Cw721Execute<
         env: &Env,
         info: &MessageInfo,
         msg: Cw721InstantiateMsg,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+    ) -> Result<Response, Cw721ContractError> {
         instantiate(deps, env, info, msg)
     }
 
@@ -180,7 +141,7 @@ pub trait Cw721Execute<
         env: &Env,
         info: &MessageInfo,
         msg: Cw721ExecuteMsg,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
+    ) -> Result<Response, Cw721ContractError> {
         match msg {
             Cw721ExecuteMsg::Mint {
                 token_id,
@@ -248,8 +209,8 @@ pub trait Cw721Execute<
         info: &MessageInfo,
         recipient: String,
         token_id: String,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        transfer_nft::<TNftExtension>(deps, env, info, &recipient, &token_id)?;
+    ) -> Result<Response, Cw721ContractError> {
+        transfer_nft(deps, env, info, &recipient, &token_id)?;
 
         Ok(Response::new()
             .add_attribute("action", "transfer_nft")
@@ -266,8 +227,8 @@ pub trait Cw721Execute<
         contract: String,
         token_id: String,
         msg: Binary,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        send_nft::<TNftExtension, TCustomResponseMsg>(deps, env, info, contract, token_id, msg)
+    ) -> Result<Response, Cw721ContractError> {
+        send_nft(deps, env, info, contract, token_id, msg)
     }
 
     fn approve(
@@ -278,8 +239,8 @@ pub trait Cw721Execute<
         spender: String,
         token_id: String,
         expires: Option<Expiration>,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        approve::<TNftExtension, TCustomResponseMsg>(deps, env, info, spender, token_id, expires)
+    ) -> Result<Response, Cw721ContractError> {
+        approve(deps, env, info, spender, token_id, expires)
     }
 
     fn revoke(
@@ -289,8 +250,8 @@ pub trait Cw721Execute<
         info: &MessageInfo,
         spender: String,
         token_id: String,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        revoke::<TNftExtension, TCustomResponseMsg>(deps, env, info, spender, token_id)
+    ) -> Result<Response, Cw721ContractError> {
+        revoke(deps, env, info, spender, token_id)
     }
 
     fn approve_all(
@@ -300,8 +261,8 @@ pub trait Cw721Execute<
         info: &MessageInfo,
         operator: String,
         expires: Option<Expiration>,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        approve_all::<TCustomResponseMsg>(deps, env, info, operator, expires)
+    ) -> Result<Response, Cw721ContractError> {
+        approve_all(deps, env, info, operator, expires)
     }
 
     fn revoke_all(
@@ -310,8 +271,8 @@ pub trait Cw721Execute<
         _env: &Env,
         info: &MessageInfo,
         operator: String,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        revoke_all::<TCustomResponseMsg>(deps, _env, info, operator)
+    ) -> Result<Response, Cw721ContractError> {
+        revoke_all(deps, _env, info, operator)
     }
 
     fn burn_nft(
@@ -320,8 +281,8 @@ pub trait Cw721Execute<
         env: &Env,
         info: &MessageInfo,
         token_id: String,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        burn_nft::<TCustomResponseMsg>(deps, env, info, token_id)
+    ) -> Result<Response, Cw721ContractError> {
+        burn_nft(deps, env, info, token_id)
     }
 
     // ------- opionated cw721 functions -------
@@ -343,7 +304,6 @@ pub trait Cw721Execute<
         initialize_minter(storage, api, minter)
     }
 
-
     #[allow(clippy::too_many_arguments)]
     fn mint(
         &self,
@@ -353,10 +313,8 @@ pub trait Cw721Execute<
         token_id: String,
         owner: String,
         token_uri: Option<String>,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        mint::<TNftExtension, TNftExtensionMsg, TCustomResponseMsg>(
-            deps, env, info, token_id, owner, token_uri,
-        )
+    ) -> Result<Response, Cw721ContractError> {
+        mint(deps, env, info, token_id, owner, token_uri)
     }
 
     fn update_minter_ownership(
@@ -365,8 +323,8 @@ pub trait Cw721Execute<
         env: &Env,
         info: &MessageInfo,
         action: Action,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        update_minter_ownership::<TCustomResponseMsg>(deps, env, info, action)
+    ) -> Result<Response, Cw721ContractError> {
+        update_minter_ownership(deps, env, info, action)
     }
 
     fn update_creator_ownership(
@@ -375,19 +333,8 @@ pub trait Cw721Execute<
         env: &Env,
         info: &MessageInfo,
         action: Action,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        update_creator_ownership::<TCustomResponseMsg>(deps, env, info, action)
-    }
-
-    /// Custom msg execution. This is a no-op in default implementation.
-    fn execute_extension(
-        &self,
-        _deps: DepsMut,
-        _env: &Env,
-        _info: &MessageInfo,
-        _msg: TExtensionMsg,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        Ok(Response::default())
+    ) -> Result<Response, Cw721ContractError> {
+        update_creator_ownership(deps, env, info, action)
     }
 
     /// The creator is the only one eligible to update NFT's token uri and onchain metadata (`NftInfo.extension`).
@@ -399,14 +346,8 @@ pub trait Cw721Execute<
         info: &MessageInfo,
         token_id: String,
         token_uri: Option<String>,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        update_nft_info::<TNftExtensionMsg, TCustomResponseMsg>(
-            deps,
-            env,
-            info.into(),
-            token_id,
-            token_uri,
-        )   
+    ) -> Result<Response, Cw721ContractError> {
+        update_nft_info(deps, env, info.into(), token_id, token_uri)
     }
 
     fn set_withdraw_address(
@@ -414,40 +355,29 @@ pub trait Cw721Execute<
         deps: DepsMut,
         sender: &Addr,
         address: String,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        set_withdraw_address::<TCustomResponseMsg>(deps, sender, address)
+    ) -> Result<Response, Cw721ContractError> {
+        set_withdraw_address(deps, sender, address)
     }
 
     fn remove_withdraw_address(
         &self,
         storage: &mut dyn Storage,
         sender: &Addr,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        remove_withdraw_address::<TCustomResponseMsg>(storage, sender)
+    ) -> Result<Response, Cw721ContractError> {
+        remove_withdraw_address(storage, sender)
     }
 
     fn withdraw_funds(
         &self,
         storage: &mut dyn Storage,
-        amount: &Coin,
-    ) -> Result<Response<TCustomResponseMsg>, Cw721ContractError> {
-        withdraw_funds::<TCustomResponseMsg>(storage, amount)
+        amount: &cosmwasm_std::Coin,
+    ) -> Result<Response, Cw721ContractError> {
+        withdraw_funds(storage, amount)
     }
 }
 
 /// Trait with generic onchain nft and collection extensions used to query the contract state and contains default implementations for all queries.
-pub trait Cw721Query<
-    // NftInfo extension (onchain metadata).
-    TNftExtension,
-    // CollectionInfo extension (onchain attributes).
-    TCollectionExtension,
-    // Custom query msg for custom contract logic. Default implementation returns an empty binary.
-    TExtensionQueryMsg,
-> where
-    TNftExtension: Cw721State + Contains,
-    TCollectionExtension: Cw721State + FromAttributesState,
-    TExtensionQueryMsg: Cw721CustomMsg,
-{
+pub trait Cw721Query {
     fn query(
         &self,
         deps: Deps,
@@ -596,16 +526,14 @@ pub trait Cw721Query<
         &self,
         deps: Deps,
         contract_addr: impl Into<String>,
-    ) -> Result<ConfigResponse, Cw721ContractError>
-    {
+    ) -> Result<ConfigResponse, Cw721ContractError> {
         query_config(deps, contract_addr)
     }
 
     fn query_collection_info_and_extension(
         &self,
         deps: Deps,
-    ) -> Result<CollectionInfoAndExtensionResponse, Cw721ContractError>
-    {
+    ) -> Result<CollectionInfoAndExtensionResponse, Cw721ContractError> {
         query_collection_info_and_extension(deps)
     }
 
@@ -622,10 +550,8 @@ pub trait Cw721Query<
         storage: &dyn Storage,
         token_id: String,
     ) -> StdResult<NftInfoResponse> {
-        query_nft_info::<TNftExtension>(storage, token_id)
+        query_nft_info(storage, token_id)
     }
-
-
 
     fn query_owner_of(
         &self,
@@ -725,30 +651,7 @@ pub trait Cw721Query<
         token_id: String,
         include_expired_approval: bool,
     ) -> StdResult<AllNftInfoResponse> {
-        query_all_nft_info::<TNftExtension>(deps, env, token_id, include_expired_approval)
-    }
-
-    /// Custom msg query. Default implementation returns an empty binary.
-    fn query_extension(
-        &self,
-        _deps: Deps,
-        _env: &Env,
-        _msg: TExtensionQueryMsg,
-    ) -> Result<Binary, Cw721ContractError> {
-        Ok(Binary::default())
-    }
-
-    /// use GetCollectionInfoAndExtension instead.
-    /// No-op / empty extension query returning empty binary, needed for inferring type parameter during compile
-    ///
-    /// Note: it may be extended in case there are use cases e.g. for specific NFT metadata query.
-    fn query_custom_collection_extension(
-        &self,
-        _deps: Deps,
-        _env: &Env,
-        _msg: TCollectionExtension,
-    ) -> Result<Binary, Cw721ContractError> {
-        Ok(Binary::default())
+        query_all_nft_info(deps, env, token_id, include_expired_approval)
     }
 
     fn query_withdraw_address(&self, deps: Deps) -> StdResult<Option<String>> {
@@ -757,27 +660,16 @@ pub trait Cw721Query<
 }
 
 /// Generic trait with onchain nft and collection extensions used to call query and execute messages for a given CW721 addr.
-pub trait Cw721Calls<
-    TNftExtension,
-    TNftExtensionMsg,
-    TCollectionExtension,
-    TExtensionMsg,
-    TExtensionQueryMsg,
-> where
-    TNftExtensionMsg: Cw721CustomMsg,
+pub trait Cw721Calls<TNftExtension, TCollectionExtension>
+where
     TNftExtension: Cw721State,
     TCollectionExtension: Cw721State,
-    TExtensionMsg: Cw721CustomMsg,
-    TExtensionQueryMsg: Cw721CustomMsg,
 {
     /// Returns the CW721 address.
     fn addr(&self) -> Addr;
 
     /// Executes the CW721 contract with the given message.
-    fn call(
-        &self,
-        msg: Cw721ExecuteMsg,
-    ) -> StdResult<CosmosMsg> {
+    fn call(&self, msg: Cw721ExecuteMsg) -> StdResult<CosmosMsg> {
         let msg = to_json_binary(&msg)?;
         Ok(WasmMsg::Execute {
             contract_addr: self.addr().into(),
@@ -870,10 +762,7 @@ pub trait Cw721Calls<
     }
 
     /// This is a helper to get the metadata and extension data in one call
-    fn config<U: DeserializeOwned>(
-        &self,
-        querier: &QuerierWrapper,
-    ) -> StdResult<ConfigResponse> {
+    fn config<U: DeserializeOwned>(&self, querier: &QuerierWrapper) -> StdResult<ConfigResponse> {
         let req = Cw721QueryMsg::GetConfig {};
         self.query(querier, req)
     }

@@ -18,12 +18,6 @@ use extension::Cw721BaseExtensions;
 pub const CONTRACT_NAME: &str = "crates.io:cw721-base";
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[deprecated(
-    since = "0.19.0",
-    note = "Please use `EmptyOptionalNftExtension` instead"
-)]
-pub type Extension = EmptyOptionalNftExtension;
-
 pub type Cw721BaseContract<'a> = Cw721BaseExtensions<'a>;
 
 pub mod entry {
